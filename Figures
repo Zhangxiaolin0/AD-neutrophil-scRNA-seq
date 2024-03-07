@@ -1,0 +1,543 @@
+# Fig.1c
+my.color <- c( "#DDAF70" ,"#618298", "#556171", "#618255", "#AF4034", '#B36C70', "#618286")
+DimPlot(object = AD.neutrophil.integrated, cols=my.color, pt.size = 0.2,label = TRUE, 
+        reduction = "umap",label.size = 5,repel = TRUE)+
+  theme(text = element_text(family = "Arial"))
+
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Ccrl2",
+                 pt.size = 0,group.by = "group", split.by = "Sample",
+                 combine = FALSE, split.plot = TRUE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Expression level") +
+  scale_fill_manual( labels = c("A CTL","B APP/PS1"), 
+                     values = c("A CTL"='grey',"B APP/PS1"='#b1283a' ))
+
+#celltype proportion fig.1d
+AD.neutrophil.list.1 <- SplitObject(object = AD.neutrophil.integrated, split.by = "Sample")
+AD.subcelltype <- prop.table(table(AD.neutrophil.list$B_APP/PS1$celltype))
+CTL.subcelltype <- prop.table(table(AD.neutrophil.list$A_WT$celltype))
+cellnum.subcelltype.df = merge(data.frame(CTL.subcelltype), data.frame(AD.subcelltype), by=c('Var1'))
+cellnum.subcelltype.df = cellnum.subcelltype.df[order(cellnum.subcelltype.df$Var1), ]
+names(cellnum.subcelltype.df) <- c("celltype", "CTL","ad.neutrophil")
+cellnum.subcelltype.df
+write.csv(cellnum.subcelltype.df,file="cellnum.celltype(App.ps1).csv",row.names=TRUE)
+library(reshape2)
+cellnum.subcelltype.df <- melt(cellnum.subcelltype.df, id.vars='celltype', variable.name='sample', value.name='number')
+cellnum.subcelltype.df
+names(cellnum.subcelltype.df) <- c("celltype", "sample", "proportion")
+ggplot(cellnum.subcelltype.df, aes( celltype, proportion, fill=sample))+
+  geom_bar(stat='identity', position='dodge') + 
+  scale_fill_manual(values=c( '#006a8e', "#b1283a"))+
+  scale_x_discrete(limits = c("Neu-1",  "Neu-2", "Neu-3", "Neu-4", "Neu-5", "Neu-6"))
+
+#heatmap # Fig.1e
+DefaultAssay(AD.neutrophil.integrated) <- "RNA"
+Idents(AD.neutrophil.integrated) <- AD.neutrophil.integrated$celltype
+AD.neutrophil.integrated@active.ident <- factor(AD.neutrophil.integrated@active.ident,
+                                  levels=c("Neu-1", "Neu-2", "Neu-3","Neu-4","Neu-5","Neu-6"))
+celltype.markers <- FindAllMarkers(AD.neutrophil.integrated, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+celltype.markers <- subset(celltype.markers, 
+                                   celltype.markers$p_val_adj<0.05 & abs(celltype.markers$avg_log2FC) > 0.5)
+write.csv(celltype.markers,file="celltype markers(AD mice neutrophils1).csv",row.names=FALSE) 
+celltype.markers <- readxl::read_xlsx("cluster specific markers .xlsx")
+library(pheatmap)
+library(ComplexHeatmap)
+celltype.markers <- AverageExpression(AD.neutrophil.integrated, assays = "RNA", features = celltype.markers$gene)
+pheatmap(celltype.markers$RNA,scale = "row", border_color = NA,cluster_col = FALSE,
+         cluster_rows = F, clustering_method = "average",show_rownames=F)
+gene.to.label <- c("Ifit3","Isg15","Rpl26","Rps8","Rpl8","Syk","Cd84","Notch1","Xdh","Adam8", "S100a8","S100a9","Lgals3","Ccl6","Rps21","Rpl9")
+p1+  rowAnnotation( link = anno_mark(at = which(rownames(AD.neutrophil.markers$RNA) %in% gene.to.label),
+                                     labels = gene.to.label, labels_gp = gpar(fontsize = 10)))
+
+#total neutrophils BP  Fig.1f
+BP.1 <- readxl::read_xlsx("GN UP BP.xlsx")
+BP.1 <- as.data.frame(BP.1)
+ggplot(data=BP.Neu.1, aes(y=Description, x=regulation)) +
+  geom_point(aes(color=-log10(p.adjust),size=Count),alpha=1)+
+  theme_bw() +
+  scale_size_continuous(range=c(0,8), breaks=c(5,10,20,30),limits = c(0,30)) +
+  theme(axis.text=element_text(face = "plain", color= "black",size = 12)) +
+  scale_colour_gradient(low = "#3685af", high = "#af4236")+
+  theme(text=element_text(family="serif",color = "black"))+
+  panel_border(size = 1,color = "black" )+ 
+  ylab("GO term") +
+  xlab("")+panel_border(size = 1,color = "black" )
+
+
+#granules genes heatmap Fig.2a
+granules.genes <- c("Mpo","Elane","Prtn3","Prss57","Ctsc","Camp","Ltf",
+                    "Cybb","Cyba","Lcn2","B2m","Mmp8","Mmp9","Hp","Slpi","Itgam",
+                    "Cd63","Fcgr3","Cd177","Mmp25","Fpr1","Scamp1","Vamp2","Stxbp4")
+granules.gene.markers <- AverageExpression(AD.neutrophil.integrated, assays = "RNA", features = granules.genes)
+data <- granules.gene.markers$RNA
+data <- as.data.frame(data)
+pheatmap(data, scale = "row", clustering_method = "average",angle_col = 45, show_rownames = T,
+         cluster_row = FALSE,cluster_col = F)
+
+#Chemotaxis genes heatmap  Fig.2b
+Chemotaxis.genes <- c("Cxcl10"  , "C5ar1","Ccl3" , "Ccl4" , "Ccl5" ,"Ccl25" ,
+                      "Cklf" , "Csf3r" ,"Cxadr" ,"Ccl2" , "Ccl6" ,  "Ccl9" ,
+                      "Cxcr1" ,"Cxcr2", "Cxcl2" ,"Cxcl3")
+Chemotaxis.markers <- AverageExpression(AD.neutrophil.integrated, assays = "RNA", 
+                                      features = Chemotaxis.genes)
+data <- Chemotaxis.markers$RNA
+data <- as.data.frame(data)
+pheatmap(data, scale = "row", clustering_method = "average",angle_col = 0,
+         cluster_row = FALSE,cluster_col = F)
+
+#Fig.2c
+Specific.genes <- c("Lyz2","Lcn2","Cyba","Cybb","Ncf1","Ncf4","Ltf","Camp")
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, 
+                                           features = Specific.genes, name = "Specific granules")
+VlnPlot(AD.neutrophil.integrated,features = "Specific granules1",pt.size = 0,adjust = 1)
+
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Specific granules1",
+                 pt.size = 0,group.by = "celltype", adjust = 1,
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Specific granules1") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+#Maturation score Fig.2d
+Maturation.genes <- c("Retnlg" ,"Ccl6" ,  "S100a6" ,"Clec4d" ,"Prr13" , "Cebpb" , "Slpi" ,  "S100a11",  "Btg1" ,  "Cxcr2" ,
+                      "Fth1" ,  "Grina" , "Mmp8" ,  "Fxyd5" , "Msrb1" , "H2-D1" , "Anxa2" , "Mmp9" ,  "Ftl1" ,  "Map1lc3b",
+                      "Tmcc1" , "Sat1" ,  "Cyp4f18" ,"Junb" ,  "Mxd1" ,  "Stk17b" ,"Ypel3" , "Selplg" ,"Il1f9" , "Dusp1" ,
+                      "Slc16a3","Ccr1" ,  "Rdh12" , "Clec4e" ,"Arg2" ,  "Cd300ld","Ctsd" ,  "Gda" , "Hacd4" ,
+                      "Timp2" , "Fpr1" ,  "Ifi27l2a" ,"Slc7a11" , "Stfa2l1" , "Il1b" ,  "Asprv1" ,"Cxcl2" , "Ifitm1")
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, features = Maturation.genes, name = "Maturation")
+VlnPlot(AD.neutrophil.integrated,features = "Maturation1",pt.size = 0,adjust = 1)
+VlnPlot(AD.neutrophil.integrated,features = "Maturation1",group.by = "Sample",pt.size = 0,adjust = 2)
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Maturation1",
+                 pt.size = 0,group.by = "celltype", 
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Maturation") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+#ROS score Fig.2e
+ROS.genes <- c("Cyba","Cybb","Cyp1b1","Ddah1","Gbf1",
+               "Hsp90aa1","Mpo","Ncf1","Nos2","Nos3","P2rx4","Rora","Slc7a2","Sod1","Sod2","Spr")
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, features = ROS.genes, name = "ROS")
+VlnPlot(AD.neutrophil.integrated,features = "ROS1",pt.size = 0,adjust = 1)
+VlnPlot(AD.neutrophil.integrated,features = "ROS1",group.by = "Sample2",pt.size = 0,adjust = 1)
+plots <- VlnPlot(AD.neutrophil.integrated, features = "ROS1",
+                 pt.size = 0,group.by = "celltype", 
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="ROS") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+#Fig.2f
+Chemotaxis.genes <- c( "C5ar1","Ccl12" ,"Ccl17" ,"Ccl2" , 
+                       "Ccl24" ,"Ccl25" ,"Ccl3" , "Ccl4" , "Ccl5" , "Ccl6" , "Ccl7" ,  "Ccl9" ,
+                       "Cklf" , "Csf3r" ,"Cx3cl1" , "Cxadr" ,"Cxcl1" ,"Cxcl10"  , "Cxcl2" ,"Cxcl3" ,"Cxcl5" , 
+                       "Cxcl9" ,"Cxcr1" ,"Cxcr2" )
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, features = Chemotaxis.genes, name = "Chemotaxis")
+VlnPlot(AD.neutrophil.integrated,features = "Chemotaxis1")
+VlnPlot(AD.neutrophil.integrated,features = "Chemotaxis1",group.by = "Sample",pt.size = 0,adjust = 1)
+VlnPlot(AD.neutrophil.integrated,features = "Chemotaxis1",group.by = "celltype",pt.size = 0,adjust = 1)
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Chemotaxis1",
+                 pt.size = 0,group.by = "celltype", 
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Chemotaxis") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+
+#Extended fig.2a
+Azurophil.genes <- c("Hexa","Prss57","Prtn3","Ctsg","Elane","Mpo","Ctsc")
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, 
+                                           features = Azurophil.genes, name = "Azurophil granulesb")
+VlnPlot(AD.neutrophil.integrated,features = "Azurophil granulesb1",pt.size = 0,adjust = 1)
+
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Azurophil granulesb1",
+                 pt.size = 0,group.by = "celltype", adjust = 1.5,
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Azurophil granulesb1") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+#Extended fig.2b
+Secretory.genes <- c("Cd63","Itgam","Fut4","Fcgr3","Cr2","Cybb","Mmp25","Slc11a2","Fpr1",
+                     "Scamp1","Vamp2","Stxbp4","Cd93","Cr1l")
+
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, 
+                                           features = Secretory.genes, name = "Secretory vesicles")
+VlnPlot(AD.neutrophil.integrated,features = "Secretory vesicles1",pt.size = 0,adjust = 1)
+
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Secretory vesicles1",
+                 pt.size = 0,group.by = "celltype", adjust = 1,
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Secretory vesicles1") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+#Extended fig.2c
+Gelatinase.genes <- c("Ceacam1","Mmp8","Mmp9","Itgam","Slc11a1")
+AD.neutrophil.integrated <- AddModuleScore(object = AD.neutrophil.integrated, 
+                                           features = Gelatinase.genes, name = "Gelatinase granules")
+VlnPlot(AD.neutrophil.integrated,features = "Gelatinase granules1",pt.size = 0,adjust = 1)
+
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Gelatinase granules1",
+                 pt.size = 0,group.by = "celltype", adjust = 1,
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Gelatinase granules1") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+
+#
+
+
+
+
+
+
+
+# degs  fig.3a
+DefaultAssay(AD.neutrophil.integrated) <- "RNA"
+Idents(AD.neutrophil.integrated) <- "celltype"
+Neu.1 <- subset(AD.neutrophil.integrated, ident = "Neu-1")
+Idents(Neu.1) <- "Sample"
+Neu.1.degs <- FindMarkers(Neu.1, ident.1 = "B_APP/PS1", ident.2 = "A_WT", 
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.1.degs$change <- as.factor(ifelse(Neu.1.degs$p_val_adj < 0.05 & abs(Neu.1.degs$avg_log2FC) > 0.5,
+                                               ifelse(Neu.1.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.1.degs,file="Neu-1 degs(APP/PS1 vs. CTL min.pct=0.1).csv",row.names=TRUE) 
+library(cowplot)
+Neu.1.degs$gene <- rownames(Neu.1.degs)
+ggplot(data = Neu.1.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="serif"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-1")
+#Neu-2
+Neu.2 <- subset(AD.neutrophil.integrated, ident = "Neu-2")
+Idents(Neu.2) <- "Sample"
+Neu.2.degs <- FindMarkers(Neu.2, ident.1 = "B_APP/PS1", ident.2 = "A_WT",
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.2.degs$change <- as.factor(ifelse(Neu.2.degs$p_val_adj < 0.05 & abs(Neu.2.degs$avg_log2FC) > 0.5,
+                                      ifelse(Neu.2.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.2.degs,file="Neu-2 degs(APP/PS1 vs. CTL, min.pct=0.1).csv",row.names=TRUE) 
+library(ggrepel)
+Neu.2.degs$gene <- row.names(Neu.2.degs)
+ggplot(data = Neu.2.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="serif"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-2")
+#Neu-3
+Neu.3 <- subset(AD.neutrophil.integrated, ident = "Neu-3")
+Idents(Neu.3) <- "Sample"
+Neu.3.degs <- FindMarkers(Neu.3, ident.1 = "B_APP/PS1", ident.2 = "A_WT",
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.3.degs$change <- as.factor(ifelse(Neu.3.degs$p_val_adj < 0.05 & abs(Neu.3.degs$avg_log2FC) > 0.5,
+                                      ifelse(Neu.3.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.3.degs,file="Neu-3 degs(APP/PS1 vs. CTL, min.pct=0.1).csv",row.names=TRUE) 
+ggplot(data = Neu.3.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), 
+                     limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="Arial"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-3")
+#Neu-4
+Neu.4 <- subset(AD.neutrophil.integrated, ident = "Neu-4")
+Idents(Neu.4) <- "Sample"
+Neu.4.degs <- FindMarkers(Neu.4, ident.1 = "B_APP/PS1", ident.2 = "A_WT", 
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.4.degs$change <- as.factor(ifelse(Neu.4.degs$p_val_adj < 0.05 & abs(Neu.4.degs$avg_log2FC) > 0.5,
+                                      ifelse(Neu.4.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.4.degs,file="Neu-4 degs(APP/PS1 vs. CTL, min.pct=0.1).csv",row.names=TRUE) 
+
+ggplot(data = Neu.4.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), 
+                     limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="Arial"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-4")
+#Neu-5
+Neu.5 <- subset(AD.neutrophil.integrated, ident = "Neu-5")
+Idents(Neu.5) <- "Sample"
+Neu.5.degs <- FindMarkers(Neu.5, ident.1 = "B_APP/PS1", ident.2 = "A_WT",
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.5.degs$change <- as.factor(ifelse(Neu.5.degs$p_val_adj < 0.05 & abs(Neu.5.degs$avg_log2FC) > 0.5,
+                                      ifelse(Neu.5.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.5.degs,file="Neu-5 degs(APP/PS1 vs. CTL, min.pct=0.1).csv",row.names=TRUE) 
+
+ggplot(data = Neu.5.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), 
+                     limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="Arial"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-5")
+#Neu-6
+Neu.6 <- subset(AD.neutrophil.integrated, ident = "Neu-6")
+Idents(Neu.6) <- "Sample"
+Neu.6.degs <- FindMarkers(Neu.6, ident.1 = "B_APP/PS1", ident.2 = "A_WT",
+                          verbose = FALSE,test.use = "MAST", min.pct=0.1)
+Neu.6.degs$change <- as.factor(ifelse(Neu.6.degs$p_val_adj < 0.05 & abs(Neu.6.degs$avg_log2FC) > 0.5,
+                                      ifelse(Neu.6.degs$avg_log2FC > 0.5,'Up','Down'), 'Unsig'))
+write.csv(Neu.6.degs,file="Neu-6 degs(APP/PS1 vs. CTL, min.pct=0.1).csv",row.names=TRUE) 
+
+ggplot(data = Neu.6.degs, aes(x = avg_log2FC, y = -log10(p_val_adj), color = change)) +
+  geom_point(alpha=1, size = 2) +
+  coord_flip() + 
+  theme_bw(base_size = 15) +
+  theme(panel.grid.minor = element_blank(),panel.grid.major = element_blank()) +
+  geom_vline(xintercept=c(-0.5,0.5) ,linetype=20) +
+  geom_hline(yintercept = -log10(0.05),lty=10,col="black",lwd=0.5)+
+  scale_x_continuous(name ="Log2 fold change") +
+  scale_y_continuous(name ="-log10(Adjust P-value)") +
+  scale_color_manual(name = "", values = c("#CC0000", "#2f5688", "grey"), 
+                     limits = c("Up", "Down", "Unsig"))+
+  theme(text=element_text(family="Arial"),legend.position = "top",
+        axis.line = element_line(size=0.5, colour = "black"),
+        panel.border = element_blank())+
+  labs(title = "Neu-6")
+
+#fig.3b
+library(clusterProfiler)
+background.genes.list <- AD.neutrophil.integrated@assays$RNA@features
+background.genes.list <- rownames(background.genes.list)
+transID.background.genes = bitr(background.genes.list,fromType="SYMBOL",
+                                toType=c("ENSEMBL", "ENTREZID"),OrgDb="org.Mm.eg.db")
+#Up-regulated
+Neu.1.degs$gene <- rownames(Neu.1.degs)
+Neu.1.degs.up <- subset(Neu.1.degs, Neu.1.degs$avg_log2FC > 0.263 & Neu.1.degs$p_val_adj<0.05)
+transID.Neu.1.degs.up = bitr(Neu.1.degs.up$gene,fromType="SYMBOL",
+                                 toType=c("ENSEMBL", "ENTREZID"),OrgDb="org.Mm.eg.db")
+Neu.1.degs.up <- enrichGO(transID.Neu.1.degs.up$ENTREZID, "org.Mm.eg.db", keyType="ENTREZID", ont="BP", 
+                              universe = transID.background.genes$ENTREZID,
+                              pvalueCutoff=0.05, pAdjustMethod="BH", qvalueCutoff=0.1)
+Neu.1.degs.up <- setReadable(Neu.1.degs.up, OrgDb="org.Mm.eg.db")
+Neu.1.degs.up <- subset(Neu.1.degs.up, Neu.1.degs.up$Count>2)
+Neu.1.degs.up
+write.csv(Neu.1.degs.up,file="Enriched GO terms of Neu-1 up-regulated degs(AD vs. WT).csv",
+          row.names=F)  
+
+#Down-regulated
+Neu.1.degs.down <- subset(Neu.1.degs, Neu.1.degs$avg_log2FC< (-0.263) & Neu.1.degs$p_val_adj<0.05)
+transID.Neu.1.degs.down = bitr(Neu.1.degs.down$gene,fromType="SYMBOL",
+                                   toType=c("ENSEMBL", "ENTREZID"),OrgDb="org.Mm.eg.db")
+Neu.1.degs.down <- enrichGO(transID.Neu.1.degs.down$ENTREZID, "org.Mm.eg.db", keyType="ENTREZID", ont="BP", 
+                                universe = transID.background.genes$ENTREZID,
+                                pvalueCutoff=0.05, pAdjustMethod="BH", qvalueCutoff=0.1)
+Neu.1.degs.down <- setReadable(Neu.1.degs.down, OrgDb="org.Mm.eg.db")
+Neu.1.degs.down <- subset(Neu.1.degs.down, Neu.1.degs.down$Count>2)
+Neu.1.degs.down
+write.csv(Neu.1.degs.down,file="nriched GO terms of Neu-1 Down-regulated degs(AD vs. WT).csv",
+          row.names=F)  
+
+BP.Neu.1 <- readxl::read_xlsx("NEU-1 BP.xlsx")
+BP.Neu.1$Description <- as.factor(BP.Neu.1$Description)
+BP.Neu.1$Description <- fct_inorder(BP.Neu.1$Description)
+ggplot(data=BP.Neu.1, aes(y= Description, x= regulation)) +
+  geom_point(aes(color=-log10(p.adjust),size=Count),alpha=1)+
+  theme_bw() +
+  theme(axis.text=element_text(face = "plain", color= "black",size = 12)) +
+  scale_colour_gradient(low = "#3685af", high = "#af4236")+
+  panel_border(size = 1,color = "black" )+
+  theme(text=element_text(family="serif",color = "black"))+
+  ylab("GO term")+
+  scale_size_continuous(range=c(2,6), breaks=c(10,20,30),limits = c(1,30))
+
+
+#dotplot fig.4a
+markergenes <-c("Ppbp","Pf4","Nrgn", "Gng11","Ctla2a",
+                "Il1r2","Gm2a","G0s2","Cd14",
+                "Dennd4a","Dmxl2","Pde4b","Gpcpd1","Neat1","Ankrd11",
+                "Retnlg","Mmp8","Wfdc21","Lcn2","Timp2","Lyz2",
+                "Rpl32","Rps5","Rps8","Rps15a","Rpl13",
+                "Ccrl2","Lgals3")
+markergenes <-c("Neat1","Gpcpd1","Dennd4a","Atp2b1","Pde4b","Ankrd11")
+DotPlot(AD.neutrophil.integrated, features = markergenes)+RotatedAxis()+
+  scale_x_discrete("")+scale_y_discrete("")
+
+#fig.4b
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Ccrl2",
+                 pt.size = 0,group.by = "celltype", adjust = 1.25,
+                 combine = FALSE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="serif",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Ccrl2") +
+  scale_fill_manual( labels = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), 
+                     values = c("Neu-1" = "#DDAF70",
+                                "Neu-2" = "#618298",
+                                "Neu-3" = "#556171",
+                                "Neu-4" = "#618255",
+                                "Neu-5" = "#AF4034",
+                                "Neu-6" = '#B36C70' ))
+
+#fig.4c
+plots <- VlnPlot(AD.neutrophil.integrated, features = "Ccrl2",
+                 pt.size = 0,group.by = "celltype", split.by = "Sample",
+                 combine = FALSE, split.plot = TRUE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="Arial",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Number of genes") +
+  scale_fill_manual( labels = c("A_WT","B_APP/PS1"), 
+                     values = c("A_WT"='grey',"B_APP/PS1"='#b1283a' ))
+
+#TF genes heatmap fig.4d
+TF.genes <- c("Gata2","Irf8","Gfi1","Cebpa","Runx1","Lyl1",
+            "Plagl2","Ikzf1",  "Cebpe","Spi1","Cebpb")
+TF.gene.markers <- AverageExpression(AD.neutrophil.integrated, assays = "RNA", 
+                                                    features = TF.genes)
+data <- TF.gene.markers$RNA
+data <- as.data.frame(data)
+pheatmap(data, scale = "row", clustering_method = "average",angle_col = 45, show_rownames = T,
+         cluster_row = FALSE,cluster_col = F)
+
+#ISG heatmap Extended fig.1c
+ISGs<- c( "Mavs","Hpse","Slfn4","Oas3","Zbp1","Xaf1","Ifi204","Nt5c3","Apobec3","Ssbp3",
+         "H2-T23","Ifi27l2a","Rtp4","Oasl2","Trim30a","Oas2",
+         "Ifi47","Ifit2","Cmpk2","Ifit3b","Ifit3","Rsad2","Usp18","Isg15",
+         "Oasl1","Gbp2","Slfn8","Slfn5","Irgm1","Gm13822",
+         "Stat1","Irf7","Slfn1","Isg20","Ifitm6","Irf3",
+         "Nampt","Trim25","Fgl2","Ifitm2","Ifitm1","Trim5","Ddit4","Cd74")
+ISGs.markers <- AverageExpression(AD.neutrophil.integrated, assays = "RNA", 
+                                  features = ISGs)
+data <- ISGs.markers$RNA
+data <- as.data.frame(data)
+pheatmap(data, scale = "row", clustering_method = "average",angle_col = 0,
+         cluster_row = FALSE,cluster_col = F)
+
+#Extended fig.3a
+plots <- VlnPlot(AD.neutrophil.integrated, features = "nFeature_RNA",
+                 pt.size = 0,group.by = "celltype", split.by = "Sample",
+                 combine = FALSE, split.plot = TRUE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="Arial",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Number of genes") +
+  scale_fill_manual( labels = c("A_WT","B_APP/PS1"), 
+                     values = c("A_WT"='grey',"B_APP/PS1"='#b1283a' ))
+plots <- VlnPlot(AD.neutrophil.integrated_copy, features = "nCount_RNA",
+                 pt.size = 0,group.by = "celltype", split.by = "Sample",
+                 combine = FALSE, split.plot = TRUE)
+wrap_plots(plots = plots) + 
+  theme(text=element_text(family="Arial",color = "black"),legend.position = "top")+
+  scale_y_continuous(name ="Number of UMIs") +
+  scale_fill_manual( labels = c("CTL","ad.neutrophil"), 
+                     values = c("CTL"='grey',"ad.neutrophil"='#b1283a' ))
+
+
+
+#Extended fig.3b
+library(UpSetR) 
+list <- readxl::read_xlsx("degs to upset.xlsx")
+data<-fromList(list)
+upset(data) # 要先加载UpSetR
+upset(fromList(list),nsets = 6,order.by = "freq")
+upset(fromList(list),nsets = 6,order.by = "freq",sets = c("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"),
+      mb.ratio = c(0.55, 0.45),mainbar.y.label = "Distinct DEGs", 
+      queries = list(list(query = intersects, 
+                          params = list("Neu-1","Neu-2","Neu-3","Neu-4","Neu-5","Neu-6"), active = F)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
