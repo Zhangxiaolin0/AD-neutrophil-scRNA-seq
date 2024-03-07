@@ -1,0 +1,65 @@
+#Neutrophils re-clustered
+AD.neutrophils <- subset(data.AD.neutrophil.integrated, idents = "Neutrophils" )
+AD.neutrophil.list <- SplitObject(object = AD.neutrophils, split.by = "Sample")
+for (i in 1:length(AD.neutrophil.list))
+{
+  AD.neutrophil.list[[i]] <- NormalizeData(object = AD.neutrophil.list[[i]],normalization.method = "LogNormalize")
+  vst_data <- FindVariableFeatures(object=AD.neutrophil.list[[i]]@assays$RNA@data,selection.method = "vst",nfeatures = 2000)
+  dim(vst_data)
+  head(vst_data)
+  vst_data <- vst_data[order(vst_data$vst.variance,decreasing = TRUE), ]
+  head(vst_data)
+  vst_data <- vst_data[vst_data$vst.mean >= 0.1 & vst_data$vst.mean <= 8 
+                       & vst_data$vst.variance >= 0.8, ]
+  dim(vst_data)
+  head(vst_data)
+  length(AD.neutrophil.list[[i]]@assays$RNA@var.features)
+  AD.neutrophil.list[[i]]@assays$RNA@var.features <- rownames(vst_data)
+  head(AD.neutrophil.list[[i]]@assays$RNA@var.features)
+}
+AD.neutrophil.list
+# Merge Seurat object and Remove Batch effect by Mutual Nearest Neighbor method
+project_P.anchors <- FindIntegrationAnchors(object.list = AD.neutrophil.list, dims = 1:50, anchor.features = 2000)
+AD.neutrophil.integrated <- IntegrateData(anchorset = project_P.anchors, dims = 1:50)
+rm(project_P.anchors)
+dim(AD.neutrophil.integrated@assays$integrated@data)
+# PCA and t-SNE analysis based on the above integration 
+DefaultAssay(object = AD.neutrophil.integrated) <- "integrated"
+AD.neutrophil.integrated <- ScaleData(object = AD.neutrophil.integrated, features=AD.neutrophil.integrated@assays$integrated@var.features)
+AD.neutrophil.integrated <- RunPCA(object = AD.neutrophil.integrated, npcs = 50)
+pca_integrate <- AD.neutrophil.integrated@reductions$pca@cell.embeddings
+dim(AD.neutrophil.integrated@reductions$pca@cell.embeddings)
+dim(pca_integrate)
+AD.neutrophil.integrated <- RunUMAP(object = AD.neutrophil.integrated, reduction = "pca",dims = 1:15,check_duplicates = FALSE)
+dim(AD.neutrophil.integrated@reductions$umap@cell.embeddings)
+umap_integrate <- AD.neutrophil.integrated@reductions$umap@cell.embeddings
+dim(umap_integrate)
+Idents(AD.neutrophil.integrated) <- AD.neutrophil.integrated$Sample
+# Fig.1b
+DimPlot(object = AD.neutrophil.integrated, pt.size = 0.1,reduction = 'umap', label.size = 15,
+        split.by = "Sample", cols = c('#006a8e',"#b1283a"))
+#clustering
+DefaultAssay(object = AD.neutrophil.integrated) <- "integrated"
+AD.neutrophil.integrated <- FindNeighbors(object = AD.neutrophil.integrated, reduction.type = "pca", dims.use = 1:15,k.param = 30)
+AD.neutrophil.integrated <- FindClusters(object = AD.neutrophil.integrated, resolution = 1)
+table(AD.neutrophil.integrated@active.ident)
+cluster_add1_idents <- as.integer(AD.neutrophil.integrated@active.ident)
+cluster_add1_idents <- factor(cluster_add1_idents,levels=1:length(unique(cluster_add1_idents)))
+names(cluster_add1_idents) <- rownames(AD.neutrophil.integrated@meta.data)
+AD.neutrophil.integrated@active.ident <- cluster_add1_idents
+AD.neutrophil.integrated@meta.data$Cluster <- cluster_add1_idents
+head(AD.neutrophil.integrated@meta.data)
+DimPlot(object = AD.neutrophil.integrated, cols=colorRampPalette(brewer.pal(8,'Set1'))
+        (length(levels(AD.neutrophil.integrated@meta.data$Cluster))),
+        pt.size = 0.5,label = TRUE, reduction = "umap", group.by = "Cluster",label.size = 4)+
+  theme(text = element_text(family = "Arial"))
+
+#AD.neutrophil.integrated
+Idents(AD.neutrophil.integrated) <- AD.neutrophil.integrated$Cluster
+AD.neutrophil.integrated <- RenameIdents(AD.neutrophil.integrated, 
+                           '1' = "Neu-5", '2'="Neu-4",'3'="Neu-6",
+                           '4'="Neu-3",'5'="Neu-2",'6'="Neu-1",'7'="Neu-1")
+AD.neutrophil.integrated$celltype <- Idents(AD.neutrophil.integrated)
+Idents(AD.neutrophil.integrated) <- AD.neutrophil.integrated$celltype
+levels(AD.neutrophil.integrated) <- c("Neu-1", "Neu-2","Neu-3","Neu-4","Neu-5","Neu-6")
+AD.neutrophil.integrated$celltype <- Idents(AD.neutrophil.integrated)
