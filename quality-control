@@ -1,0 +1,127 @@
+library(Seurat)
+library(SeuratData)
+library(dplyr)
+library(data.table)
+library(SummarizedExperiment)
+setwd("/Users/zhangxiaolin/desktop/DATA/AD neutrophil/scRNA-seq 2023")
+
+
+
+data.ctl <- Read10X("/Users/zhangxiaolin/desktop/DATA/AD neutrophil/scRNA-seq/row_data/CTL/filtered_feature_bc_matrix")
+data.AD <- Read10X("/Users/zhangxiaolin/desktop/DATA/AD neutrophil/scRNA-seq/row_data/AD/filtered_feature_bc_matrix")
+data.ctl <- CreateSeuratObject(counts = data.ctl, project = "WT", min.cells = 3, min.features = 200)
+data.AD <- CreateSeuratObject(counts = data.AD, project = "APP/PS1", min.cells = 3, min.features = 200)
+data.ctl@meta.data$Sample <- "A_WT"
+data.AD@meta.data$Sample <- "B_APP/PS1"
+
+data.AD.neutrophil <- merge(x = data.ctl, y = data.AD)
+data.AD.neutrophil[["percent.mt"]] <- PercentageFeatureSet(data.AD.neutrophil, pattern = "^mt-")
+data.AD.neutrophil[["percent.hb"]] <- PercentageFeatureSet(data.AD.neutrophil, pattern = "^Hbb-")
+VlnPlot(data.AD.neutrophil, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.hb"), 
+        ncol = 2,pt.size = 0.1)
+FeatureScatter(data.AD.neutrophil, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+mean <- mean(data.AD.neutrophil$nFeature_RNA)
+sd <- sd(data.AD.neutrophil$nFeature_RNA)
+quantile(data.AD.neutrophil$nFeature_RNA, c(0.05,0.95))
+quantile(data.AD.neutrophil$nCount_RNA, c(0.05,0.95))
+data.AD.neutrophil.qc <- subset(data.AD.neutrophil, subset = nFeature_RNA > 500 & nFeature_RNA < 3400
+                             & nCount_RNA > 1000 & nCount_RNA < 13180 & percent.mt < 10 &
+                               percent.hb < 1)
+VlnPlot(data.AD.neutrophil.qc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.hb"), ncol = 2,pt.size = 0.1)
+
+saveRDS(data.AD.neutrophil, file = "/Users/zhangxiaolin/desktop/DATA/AD neutrophil/ALL/data.AD.neutrophil.rds")
+saveRDS(data.AD.neutrophil.qc, file = "/Users/zhangxiaolin/desktop/DATA/AD neutrophil/ALL/data.AD.neutrophil.qc(mt10).rds")
+
+data.AD.neutrophil.list <- SplitObject(object = data.AD.neutrophil.qc, split.by = "Sample")
+for (i in 1:length(data.AD.neutrophil.list))
+{
+  data.AD.neutrophil.list[[i]] <- NormalizeData(object = data.AD.neutrophil.list[[i]],normalization.method = "LogNormalize")
+  vst_data <- FindVariableFeatures(object=data.AD.neutrophil.list[[i]]@assays$RNA$data,selection.method = "vst",nfeatures = 2000)
+  dim(vst_data)
+  head(vst_data)
+  vst_data <- vst_data[order(vst_data$vst.variance,decreasing = TRUE), ]
+  head(vst_data)
+  vst_data <- vst_data[vst_data$vst.mean >= 0.1 & vst_data$vst.mean <= 8 
+                       & vst_data$vst.variance >= 0.8, ]
+  dim(vst_data)
+  head(vst_data)
+  length(data.AD.neutrophil.list[[i]]@assays$RNA$data)
+  data.AD.neutrophil.list[[i]]@assays$RNA$data <- rownames(vst_data)
+  head(data.AD.neutrophil.list[[i]]@assays$RNA$data)
+}
+data.AD.neutrophil.list
+#Merge Seurat object and Remove Batch effect by Mutual Nearest Neighbor method
+project_P.anchors <- FindIntegrationAnchors(object.list = data.AD.neutrophil.list, dims = 1:50, anchor.features = 2000)
+data.AD.neutrophil.integrated <- IntegrateData(anchorset = project_P.anchors, dims = 1:50)
+rm(project_P.anchors)
+dim(data.AD.neutrophil.integrated@assays$integrated@data)
+
+#PCA and UMAP analysis based on the above integration 
+DefaultAssay(object = data.AD.neutrophil.integrated) <- "integrated"
+data.AD.neutrophil.integrated <- ScaleData(object = data.AD.neutrophil.integrated, features=data.AD.neutrophil.integrated@assays$integrated@var.features)
+data.AD.neutrophil.integrated <- RunPCA(object = data.AD.neutrophil.integrated, npcs = 50)
+pca_integrate <- data.AD.neutrophil.integrated@reductions$pca@cell.embeddings
+dim(data.AD.neutrophil.integrated@reductions$pca@cell.embeddings)
+dim(pca_integrate)
+data.AD.neutrophil.integrated <- RunUMAP(object = data.AD.neutrophil.integrated, reduction = "pca",dims = 1:15,check_duplicates = FALSE)
+dim(data.AD.neutrophil.integrated@reductions$umap@cell.embeddings)
+tsne_integrate <- data.AD.neutrophil.integrated@reductions$umap@cell.embeddings
+dim(umap_integrate)
+
+DimPlot(object = data.AD.neutrophil.integrated, pt.size = 0.1,reduction = 'umap', label.size = 15,
+        split.by = "Sample", cols = c('#006a8e',"#b1283a"))
+
+#clustering
+DefaultAssay(object = data.AD.neutrophil.integrated) <- "integrated"
+data.AD.neutrophil.integrated <- FindNeighbors(object = data.AD.neutrophil.integrated, reduction.type = "pca", dims.use = 1:15,k.param = 30)
+data.AD.neutrophil.integrated <- FindClusters(object = data.AD.neutrophil.integrated, resolution = 1)
+table(data.AD.neutrophil.integrated@active.ident)
+cluster_add1_idents <- as.integer(data.AD.neutrophil.integrated@active.ident)
+cluster_add1_idents <- factor(cluster_add1_idents,levels=1:length(unique(cluster_add1_idents)))
+names(cluster_add1_idents) <- rownames(data.AD.neutrophil.integrated@meta.data)
+data.AD.neutrophil.integrated@active.ident <- cluster_add1_idents
+data.AD.neutrophil.integrated@meta.data$Cluster <- cluster_add1_idents
+head(data.AD.neutrophil.integrated@meta.data)
+library(RColorBrewer)
+DimPlot(object = data.AD.neutrophil.integrated, cols=colorRampPalette(brewer.pal(8,'Set1'))
+        (length(levels(data.AD.neutrophil.integrated@meta.data$Cluster))),
+        pt.size = 0.5,label = TRUE, reduction = "umap", group.by = "Cluster",label.size = 4)+
+  theme(text = element_text(family = "Arial"))
+
+#Identify cell markers between clusters 
+DefaultAssay(data.AD.neutrophil.integrated) <- "RNA"
+Idents(data.AD.neutrophil.integrated) <- data.AD.neutrophil.integrated$cluster
+AD.neutrophil.markers <- FindAllMarkers(data.AD.neutrophil.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+DefaultAssay(data.AD.neutrophil.integrated) <- "RNA"
+library(SingleR)
+ref.se <- celldex::ImmGenData()
+background.genes.list <- data.AD.neutrophil.integrated@assays$RNA@counts
+background.genes.list <- rownames(background.genes.list)
+common.ad.neutrophils <- intersect(background.genes.list, rownames(ref.se))
+ref.se.ad.neutrophils <- ref.se[common.ad.neutrophils,]
+results.ad.neutrophils <- SingleR(test = as.SingleCellExperiment(data.AD.neutrophil.integrated), ref = ref.se.ad.neutrophils, 
+                       labels = ref.se$label.fine, method = "cluster", 
+                       clusters = data.AD.neutrophil.integrated@active.ident)
+results.ad.neutrophils$labels
+Idents(data.AD.neutrophil.integrated) <- data.AD.neutrophil.integrated$Cluster
+data.AD.neutrophil.integrated <- RenameIdents(data.AD.neutrophil.integrated, 
+                                           '1' = "Neutrophils", '2'="Monocytes",'3'="Neutrophils",
+                                           '4'="Neutrophils",'5'="Neutrophils",'6'="Monocytes",
+                                           '7'="Neutrophils",'8'="NK cells",'9'="Monocytes",
+                                           '10'="Monocytes",'11'="Monocytes",'12'="B cells",
+                                           '13'="Neutrophils",'14'="Tgd",'15'="Monocytes",
+                                           '16'="Neutrophils", '17'="Neutrophils",'18'="Basophils",
+                                           '19'="Monocytes")
+data.AD.neutrophil.integrated$celltype <- Idents(data.AD.neutrophil.integrated)
+my.color <- c(  "#AF4034","#55967e", '#006a8e',"#6a60a9",  
+               "#D55E00" ,"#E39E3E" , "#0072B2", 
+               "#CC79A7",  '#f9a11b',"#4F86C6","#fdc23e",
+               "#e3632d")
+DimPlot(object = data.AD.neutrophil.integrated, cols=my.color, pt.size = 0.5,label = TRUE, 
+        reduction = "umap",label.size = 5,repel = TRUE)+
+  theme(text = element_text(family = "Arial"))
+
+#featureplot
+FeaturePlot(data.AD.neutrophil.integrated, features = c("Cd79a","Cd3e" ,"Ncr1", "Cd68", "S100a9","Hdc"), 
+            reduction = "umap", repel = T,cols = c("lightgrey", "red") )
